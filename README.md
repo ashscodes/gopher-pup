@@ -2,7 +2,7 @@
 
 Repository for examples of what I have learned while trying to become a fully fledged gopher.
 
-- [godocsearch-cli](/godocsearch-cli/) _Document search in a command line application_.
+- [godocsearch](/godocsearch/) _Document keyword search in a command line application_.
 
 - [godolist](/godolist/) _Standard to-do list with database_.
 
