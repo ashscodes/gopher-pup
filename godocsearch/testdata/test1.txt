@@ -1,0 +1,2 @@
+This is a test file containing the keyword hello.
+This file also has some additional text.
