@@ -1,0 +1,15 @@
+{
+  "go.alternateTools": {
+    "go-langserver": "gopls"
+  },
+  "go.testFlags": ["-v"],
+  "go.useLanguageServer": true,
+
+  "[go]": {
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "always"
+    },
+    "editor.defaultFormatter": "golang.go",
+    "editor.formatOnSave": false
+  }
+}
