@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -11,46 +12,8 @@ import (
 
 func GetPeople(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	filter := bson.M{}
-	query := req.URL.Query()
-	if len(query) != 0 {
-		firstname, found := query["firstname"]
-		if found {
-			var names []string
-			if len(firstname) == 1 {
-				names = strings.Split(firstname[0], ",")
-			} else {
-				names = firstname
-			}
-			fnQuery := bson.M{"$in": names}
-			filter["firstname"] = fnQuery
-		}
-
-		lastname, found := query["lastname"]
-		if found {
-			var names []string
-			if len(lastname) == 1 {
-				names = strings.Split(lastname[0], ",")
-			} else {
-				names = lastname
-			}
-			lnQuery := bson.M{"$in": names}
-			filter["lastname"] = lnQuery
-		}
-
-		city, found := query["city"]
-		if found {
-			cityQuery := bson.M{"$in": city}
-			filter["location.city"] = cityQuery
-		}
-
-		country, found := query["country"]
-		if found {
-			countryQuery := bson.M{"$in": country}
-			filter["location.country"] = countryQuery
-		}
-	}
-
+	queryFilters := getPeopleQueryFilter()
+	filter := parseQuery(req.URL.Query(), queryFilters)
 	people, err := GetAllPeople(filter)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -81,4 +44,40 @@ func GetPerson(w http.ResponseWriter, req *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(person)
+}
+
+func getPeopleQueryFilter() []QueryFilter {
+	return []QueryFilter{
+		{Name: "firstname"},
+		{Name: "lastname"},
+		{Name: "city", ParentPath: "location"},
+		{Name: "country", ParentPath: "location"},
+	}
+}
+
+func parseQuery(queryValues url.Values, queryFilters []QueryFilter) bson.M {
+	filter := bson.M{}
+	if len(queryValues) != 0 {
+		for _, queryFilter := range queryFilters {
+			item, found := queryValues[queryFilter.Name]
+			if found {
+				var names []string
+				if len(item) == 1 {
+					names = strings.Split(item[0], ",")
+				} else {
+					names = item
+				}
+
+				jsonPath := queryFilter.Name
+				if queryFilter.ParentPath != "" {
+					jsonPath = queryFilter.ParentPath + "." + jsonPath
+				}
+
+				primitive := bson.M{"$in": names}
+				filter[jsonPath] = primitive
+			}
+		}
+	}
+
+	return filter
 }
