@@ -10,10 +10,47 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
+func CreatePerson(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var person Person
+	_ = json.NewDecoder(req.Body).Decode(&person)
+
+	result, err := CreatePersonRecord(person)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(result)
+}
+
+func DeletePerson(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	params := mux.Vars(req)
+	id := params["id"]
+
+	result, err := DeletePersonRecord(id)
+	if err != nil {
+		if err.Error() == "person not found" {
+			http.Error(w, "Person not found", http.StatusNotFound)
+			return
+		}
+
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(result)
+}
+
 func GetPeople(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
 	queryFilters := getPeopleQueryFilter()
 	filter := parseQuery(req.URL.Query(), queryFilters)
+
 	people, err := GetAllPeople(filter)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -30,8 +67,10 @@ func GetPeople(w http.ResponseWriter, req *http.Request) {
 
 func GetPerson(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
 	params := mux.Vars(req)
 	id := params["id"]
+
 	person, err := GetPersonByObjectId(id)
 	if err != nil {
 		if err.Error() == "person not found" {
@@ -44,6 +83,29 @@ func GetPerson(w http.ResponseWriter, req *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(person)
+}
+
+func UpdatePerson(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var person Person
+	_ = json.NewDecoder(req.Body).Decode(&person)
+
+	params := mux.Vars(req)
+	id := params["id"]
+
+	result, err := UpdatePersonRecord(person, id)
+	if err != nil {
+		if err.Error() == "person not found" {
+			http.Error(w, "Person not found", http.StatusNotFound)
+			return
+		}
+
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(result)
 }
 
 func getPeopleQueryFilter() []QueryFilter {

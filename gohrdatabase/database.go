@@ -17,7 +17,7 @@ var client *mongo.Client
 var err error
 var isInMemory bool
 var peopleCollection *mongo.Collection
-var people People
+var personMap map[string]Person
 
 func ConnectDatabase() {
 	dbPath := "mongodb://localhost:27017"
@@ -36,10 +36,50 @@ func ConnectDatabase() {
 	}
 }
 
+func CreatePersonRecord(person Person) (*mongo.InsertOneResult, error) {
+	if isInMemory {
+		objectId := primitive.NewObjectID()
+		personMap[objectId.String()] = person
+		return &mongo.InsertOneResult{InsertedID: objectId}, nil
+	} else {
+		result, err := peopleCollection.InsertOne(context.TODO(), person)
+		if err != nil {
+			return nil, err
+		}
+
+		return result, nil
+	}
+}
+
+func DeletePersonRecord(id string) (*mongo.DeleteResult, error) {
+	if isInMemory {
+		if _, ok := personMap[id]; ok {
+			delete(personMap, id)
+			return &mongo.DeleteResult{DeletedCount: 1}, nil
+		} else {
+			return nil, fmt.Errorf("no person with the given id was found")
+		}
+	} else {
+		objectId, err := primitive.ObjectIDFromHex(id)
+		if err != nil {
+			return nil, err
+		}
+
+		filter := bson.M{"_id": objectId}
+		result, err := peopleCollection.DeleteOne(context.TODO(), filter)
+		if err != nil {
+			return nil, err
+		}
+
+		return result, nil
+	}
+}
+
 func GetAllPeople(query bson.M) ([]*Person, error) {
 	var result []*Person
-	if (isInMemory) {
-		return people.ConvertToSlice(), nil
+	if isInMemory {
+		//	TODO: Handle query on personMap.
+		return ConvertToSlice(personMap), nil
 	} else {
 		// Returning multiple docs returns a 'cursor' object, decode one by one.
 		cursor, err := peopleCollection.Find(context.TODO(), query, nil)
@@ -69,7 +109,12 @@ func GetAllPeople(query bson.M) ([]*Person, error) {
 
 func GetPersonByObjectId(id string) (*Person, error) {
 	if isInMemory {
-		return nil, fmt.Errorf("data is in memory and this endpoint is not available")
+		person, ok := personMap[id]
+		if ok {
+			return person.Clone(), nil
+		} else {
+			return nil, fmt.Errorf("person not found")
+		}
 	} else {
 		var person *Person
 		docId, err := primitive.ObjectIDFromHex(id)
@@ -91,6 +136,38 @@ func GetPersonByObjectId(id string) (*Person, error) {
 	}
 }
 
+func UpdatePersonRecord(person Person, id string) (*mongo.UpdateResult, error) {
+	if isInMemory {
+		_, ok := personMap[id]
+		if !ok {
+			return &mongo.UpdateResult{UpsertedID: primitive.NilObjectID, UpsertedCount: 0}, fmt.Errorf("person not found")
+		}
+
+		objectId, err := primitive.ObjectIDFromHex(id)
+		if err != nil {
+			return &mongo.UpdateResult{UpsertedID: primitive.NilObjectID, UpsertedCount: 0}, err
+		}
+
+		personMap[id] = person
+		return &mongo.UpdateResult{UpsertedID: objectId, UpsertedCount: 1}, nil
+	} else {
+		objectId, err := primitive.ObjectIDFromHex(id)
+		if err != nil {
+			return &mongo.UpdateResult{UpsertedID: primitive.NilObjectID, UpsertedCount: 0}, err
+		}
+
+		filter := bson.M{"_id": objectId}
+		update := bson.M{"$set": person}
+
+		result, err := peopleCollection.UpdateOne(context.TODO(), filter, update)
+		if err != nil {
+			return &mongo.UpdateResult{UpsertedID: primitive.NilObjectID, UpsertedCount: 0}, err
+		}
+
+		return result, nil
+	}
+}
+
 func connectToMongoDB(path string) {
 	client, err = mongo.Connect(context.TODO(), options.Client().ApplyURI(path))
 	if err != nil {
@@ -103,7 +180,7 @@ func connectToMongoDB(path string) {
 	fmt.Printf("Connected to %v!\n", path)
 }
 
-func generateUsers() People {
+func generatePeople() People {
 	source := rand.NewSource(time.Now().UnixNano())
 	r := rand.New(source)
 
@@ -116,14 +193,14 @@ func generateUsers() People {
 		"Robinson", "Walker", "Hall", "Young", "Allen"}
 
 	cities := [25]string{"London", "Paris", "New York", "Tokyo", "Berlin", "Sydney", "Los Angeles", "Toronto",
-	"Madrid", "Rome", "Moscow", "Beijing", "Dubai", "Singapore", "Hong Kong", "Mumbai", "Rio de Janeiro",
-	"Cape Town", "Bangkok", "Seoul", "Amsterdam", "Stockholm", "Oslo", "Helsinki", "Vienna"}
+		"Madrid", "Rome", "Moscow", "Beijing", "Dubai", "Singapore", "Hong Kong", "Mumbai", "Rio de Janeiro",
+		"Cape Town", "Bangkok", "Seoul", "Amsterdam", "Stockholm", "Oslo", "Helsinki", "Vienna"}
 
 	countries := [25]string{"UK", "France", "USA", "Japan", "Germany", "Australia", "Canada", "Spain", "Italy", "Russia",
 		"China", "UAE", "Singapore", "Hong Kong", "India", "Brazil", "South Africa", "Thailand", "South Korea", "Netherlands",
 		"Sweden", "Norway", "Finland", "Austria"}
 
-		var users []Person
+	var users []Person
 	for i := 0; i < 100; i++ {
 		firstname := firstnames[r.Intn(len(firstnames))]
 		lastname := lastnames[r.Intn(len(lastnames))]
@@ -159,9 +236,12 @@ func isDatabaseConnected() {
 
 func seedDatabase() {
 	if isInMemory {
-		people = generateUsers()
+		for _, person := range generatePeople() {
+			objectId := primitive.NewObjectID()
+			personMap[objectId.String()] = person
+		}
 	} else {
-		_, err := peopleCollection.InsertMany(context.TODO(), generateUsers().ConvertToInterface())
+		_, err := peopleCollection.InsertMany(context.TODO(), generatePeople().ConvertToInterface())
 		if err != nil {
 			log.Fatal(err)
 		}

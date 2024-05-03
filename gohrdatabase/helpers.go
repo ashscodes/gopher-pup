@@ -2,6 +2,11 @@ package main
 
 import "reflect"
 
+func (p Person) Clone() *Person {
+	clone := p
+	return &clone
+}
+
 func (p People) ConvertToInterface() []interface{} {
 	v := reflect.ValueOf(p)
 	if v.Kind() != reflect.Slice {
@@ -22,4 +27,13 @@ func (p People) ConvertToSlice() []*Person {
 	}
 
 	return result
+}
+
+func ConvertToSlice(personMap map[string]Person) []*Person {
+	peopleSlice := make([]*Person, 0, len(personMap))
+	for _, person := range personMap {
+		peopleSlice = append(peopleSlice, &person)
+	}
+
+	return peopleSlice
 }
