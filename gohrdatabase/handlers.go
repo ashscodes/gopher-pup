@@ -10,6 +10,9 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
+// CreatePerson handles the HTTP POST request to create a new person record.
+// It decodes the JSON request body into a Person struct, creates the record
+// in the database, and returns the result as a JSON response.
 func CreatePerson(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -25,6 +28,9 @@ func CreatePerson(w http.ResponseWriter, req *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
+// DeletePerson handles the HTTP DELETE request to delete a person record by ID.
+// It retrieves the person ID from the request parameters, deletes the record
+// from the database, and returns the result as a JSON response.
 func DeletePerson(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -45,6 +51,10 @@ func DeletePerson(w http.ResponseWriter, req *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
+// GetPeople handles the HTTP GET request to retrieve multiple person records
+// based on query parameters.
+// It parses the query parameters, constructs MongoDB filter criteria, retrieves
+// matching records from the database, and returns them as a JSON response.
 func GetPeople(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -65,6 +75,9 @@ func GetPeople(w http.ResponseWriter, req *http.Request) {
 	json.NewEncoder(w).Encode(people)
 }
 
+// GetPerson handles the HTTP GET request to retrieve a single person record by ID.
+// It retrieves the person ID from the request parameters, fetches the record
+// from the database, and returns it as a JSON response.
 func GetPerson(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -85,6 +98,10 @@ func GetPerson(w http.ResponseWriter, req *http.Request) {
 	json.NewEncoder(w).Encode(person)
 }
 
+// UpdatePerson handles the HTTP PUT request to update an existing person record.
+// It decodes the JSON request body into a Person struct, retrieves the person ID
+// from the request parameters, updates the record in the database, and returns
+// the result as a JSON response.
 func UpdatePerson(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -117,6 +134,9 @@ func getPeopleQueryFilter() []QueryFilter {
 	}
 }
 
+// parseQuery parses the query parameters from an HTTP request into MongoDB filter criteria.
+// It takes the URL query values and a list of QueryFilter structs, constructs filter criteria
+// based on the query parameters, and returns a BSON filter document suitable for MongoDB queries.
 func parseQuery(queryValues url.Values, queryFilters []QueryFilter) bson.M {
 	filter := bson.M{}
 	if len(queryValues) != 0 {
