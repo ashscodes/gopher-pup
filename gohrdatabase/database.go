@@ -19,38 +19,55 @@ var isInMemory bool
 var peopleCollection *mongo.Collection
 var personMap map[string]Person
 
+// ConnectDatabase establishes a connection to the database and initializes it.
+// If the application is running in memory mode, it seeds the database with mock data.
+// If the application is using MongoDB, it checks if the collection is empty and seeds the database if necessary.
 func ConnectDatabase() {
 	dbPath := "mongodb://localhost:27017"
 	connectToMongoDB(dbPath)
 
-	if !isInMemory {
-		isDatabaseConnected()
-		if isEmpty, err := isCollectionEmpty(); err != nil {
+	if isInMemory {
+		err = seedDatabase()
+		if err != nil {
 			log.Fatal(err)
-		} else if isEmpty {
-			fmt.Println("Found no documents in collection, seeding the database...")
-			seedDatabase()
 		}
-	} else {
-		seedDatabase()
+
+		return
+	}
+
+	isDatabaseConnected()
+	if isEmpty, err := isCollectionEmpty(); err != nil {
+		log.Fatal(err)
+	} else if isEmpty {
+		fmt.Println("Found no documents in collection, seeding the database...")
+		err = seedDatabase()
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 }
 
+// CreatePersonRecord creates a new person record in the database.
+// If the application is in memory mode, it adds the person to the in-memory map.
+// If the application is using MongoDB, it inserts the person into the database.
 func CreatePersonRecord(person Person) (*mongo.InsertOneResult, error) {
 	if isInMemory {
 		objectId := primitive.NewObjectID()
 		personMap[objectId.String()] = person
 		return &mongo.InsertOneResult{InsertedID: objectId}, nil
-	} else {
-		result, err := peopleCollection.InsertOne(context.TODO(), person)
-		if err != nil {
-			return nil, err
-		}
-
-		return result, nil
 	}
+
+	result, err := peopleCollection.InsertOne(context.TODO(), person)
+	if err != nil {
+		return &mongo.InsertOneResult{InsertedID: primitive.NilObjectID}, err
+	}
+
+	return result, nil
 }
 
+// DeletePersonRecord deletes a person record from the database by its ObjectID.
+// If the application is in memory mode, it deletes the person from the in-memory map.
+// If the application is using MongoDB, it deletes the person record from the database.
 func DeletePersonRecord(id string) (*mongo.DeleteResult, error) {
 	if isInMemory {
 		if _, ok := personMap[id]; ok {
@@ -59,54 +76,62 @@ func DeletePersonRecord(id string) (*mongo.DeleteResult, error) {
 		} else {
 			return nil, fmt.Errorf("no person with the given id was found")
 		}
-	} else {
-		objectId, err := primitive.ObjectIDFromHex(id)
-		if err != nil {
-			return nil, err
-		}
-
-		filter := bson.M{"_id": objectId}
-		result, err := peopleCollection.DeleteOne(context.TODO(), filter)
-		if err != nil {
-			return nil, err
-		}
-
-		return result, nil
 	}
-}
 
-func GetAllPeople(query bson.M) ([]*Person, error) {
-	var result []*Person
-	if isInMemory {
-		//	TODO: Handle query on personMap.
-		return ConvertToSlice(personMap), nil
-	} else {
-		// Returning multiple docs returns a 'cursor' object, decode one by one.
-		cursor, err := peopleCollection.Find(context.TODO(), query, nil)
-		if err != nil {
-			return nil, err
-		}
+	objectId, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, err
+	}
 
-		defer cursor.Close(context.TODO())
-
-		for cursor.Next(context.TODO()) {
-			var person Person
-			err = cursor.Decode(&person)
-			if err != nil {
-				return nil, err
-			}
-
-			result = append(result, &person)
-		}
-
-		if err = cursor.Err(); err != nil {
-			return nil, err
-		}
+	filter := bson.M{"_id": objectId}
+	result, err := peopleCollection.DeleteOne(context.TODO(), filter)
+	if err != nil {
+		return nil, err
 	}
 
 	return result, nil
 }
 
+// GetAllPeople retrieves all person records from the database that match the provided query.
+// If the application is in memory mode, it retrieves all person records from the in-memory map.
+// If the application is using MongoDB, it queries the database for matching records.
+func GetAllPeople(query bson.M) ([]*Person, error) {
+
+	if isInMemory {
+		//	TODO: Handle query on personMap.
+		return ConvertToSlice(personMap), nil
+	}
+
+	var result []*Person
+
+	// Returning multiple docs returns a 'cursor' object, decode one by one.
+	cursor, err := peopleCollection.Find(context.TODO(), query, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	defer cursor.Close(context.TODO())
+
+	for cursor.Next(context.TODO()) {
+		var person Person
+		err = cursor.Decode(&person)
+		if err != nil {
+			return nil, err
+		}
+
+		result = append(result, &person)
+	}
+
+	if err = cursor.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// GetPersonByObjectId retrieves a person record from the database by its ObjectID.
+// If the application is in memory mode, it retrieves the person from the in-memory map.
+// If the application is using MongoDB, it queries the database for the person record.
 func GetPersonByObjectId(id string) (*Person, error) {
 	if isInMemory {
 		person, ok := personMap[id]
@@ -136,6 +161,9 @@ func GetPersonByObjectId(id string) (*Person, error) {
 	}
 }
 
+// UpdatePersonRecord updates an existing person record in the database.
+// If the application is in memory mode, it updates the person in the in-memory map.
+// If the application is using MongoDB, it updates the person in the database.
 func UpdatePersonRecord(person Person, id string) (*mongo.UpdateResult, error) {
 	if isInMemory {
 		_, ok := personMap[id]
@@ -234,16 +262,20 @@ func isDatabaseConnected() {
 	}
 }
 
-func seedDatabase() {
+func seedDatabase() error {
 	if isInMemory {
 		for _, person := range generatePeople() {
 			objectId := primitive.NewObjectID()
 			personMap[objectId.String()] = person
 		}
+
+		return nil
 	} else {
 		_, err := peopleCollection.InsertMany(context.TODO(), generatePeople().ConvertToInterface())
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
+
+		return nil
 	}
 }
