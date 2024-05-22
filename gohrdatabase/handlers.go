@@ -17,7 +17,10 @@ func CreatePerson(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	var person Person
-	_ = json.NewDecoder(req.Body).Decode(&person)
+	if err := json.NewDecoder(req.Body).Decode(&person); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	result, err := CreatePersonRecord(person)
 	if err != nil {
@@ -98,6 +101,33 @@ func GetPerson(w http.ResponseWriter, req *http.Request) {
 	json.NewEncoder(w).Encode(person)
 }
 
+// PatchPerson handles HTTP PATCH requests to update a person's record.
+// It currently supports only "replace" operations.
+func PatchPerson(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var patch Patch
+	if err := json.NewDecoder(req.Body).Decode(&patch); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if patch.Op == "replace" {
+		params := mux.Vars(req)
+		id := params["id"]
+
+		result, err := PatchPersonRecord(patch, id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		json.NewEncoder(w).Encode(result)
+	} else {
+		http.Error(w, "PATCH currently only supports 'replace' operations.", http.StatusBadRequest)
+	}
+}
+
 // UpdatePerson handles the HTTP PUT request to update an existing person record.
 // It decodes the JSON request body into a Person struct, retrieves the person ID
 // from the request parameters, updates the record in the database, and returns
@@ -106,7 +136,10 @@ func UpdatePerson(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	var person Person
-	_ = json.NewDecoder(req.Body).Decode(&person)
+	if err := json.NewDecoder(req.Body).Decode(&person); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	params := mux.Vars(req)
 	id := params["id"]

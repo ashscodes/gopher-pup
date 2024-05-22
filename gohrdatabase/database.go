@@ -50,19 +50,19 @@ func ConnectDatabase() {
 // CreatePersonRecord creates a new person record in the database.
 // If the application is in memory mode, it adds the person to the in-memory map.
 // If the application is using MongoDB, it inserts the person into the database.
-func CreatePersonRecord(person Person) (*mongo.InsertOneResult, error) {
+func CreatePersonRecord(person Person) (*Person, error) {
 	if isInMemory {
 		objectId := primitive.NewObjectID()
 		personMap[objectId.String()] = person
-		return &mongo.InsertOneResult{InsertedID: objectId}, nil
+		return &person, nil
 	}
 
-	result, err := peopleCollection.InsertOne(context.TODO(), person)
+	_, err := peopleCollection.InsertOne(context.TODO(), person)
 	if err != nil {
-		return &mongo.InsertOneResult{InsertedID: primitive.NilObjectID}, err
+		return &Person{}, err
 	}
 
-	return result, nil
+	return &person, nil
 }
 
 // DeletePersonRecord deletes a person record from the database by its ObjectID.
@@ -161,38 +161,72 @@ func GetPersonByObjectId(id string) (*Person, error) {
 	}
 }
 
-// UpdatePersonRecord updates an existing person record in the database.
-// If the application is in memory mode, it updates the person in the in-memory map.
-// If the application is using MongoDB, it updates the person in the database.
-func UpdatePersonRecord(person Person, id string) (*mongo.UpdateResult, error) {
+// PatchPersonRecord updates a person's record either in-memory or in MongoDB,
+// depending on the configuration.
+func PatchPersonRecord(patch Patch, id string) (*Person, error) {
 	if isInMemory {
-		_, ok := personMap[id]
+		person, ok := personMap[id]
 		if !ok {
-			return &mongo.UpdateResult{UpsertedID: primitive.NilObjectID, UpsertedCount: 0}, fmt.Errorf("person not found")
+			return nil, fmt.Errorf("person not found")
 		}
 
-		objectId, err := primitive.ObjectIDFromHex(id)
+		err = SetFieldByReflection(&person, patch.Path, patch.Value)
 		if err != nil {
-			return &mongo.UpdateResult{UpsertedID: primitive.NilObjectID, UpsertedCount: 0}, err
+			return nil, err
 		}
 
 		personMap[id] = person
-		return &mongo.UpdateResult{UpsertedID: objectId, UpsertedCount: 1}, nil
+		return &person, nil
+	} else {
+		replace := bson.M{patch.Path: patch.Value}
+		objectId, err := primitive.ObjectIDFromHex(id)
+		if err != nil {
+			return nil, err
+		}
+
+		filter := bson.M{"_id": objectId}
+		update := bson.M{"$set": replace}
+		_, err = peopleCollection.UpdateOne(context.TODO(), filter, update)
+		if err != nil {
+			return nil, err
+		}
+
+		return GetPersonByObjectId(id)
+	}
+}
+
+// UpdatePersonRecord updates an existing person record in the database.
+// If the application is in memory mode, it updates the person in the in-memory map.
+// If the application is using MongoDB, it updates the person in the database.
+func UpdatePersonRecord(person Person, id string) (*Person, error) {
+	if isInMemory {
+		_, ok := personMap[id]
+		if !ok {
+			return &Person{}, fmt.Errorf("person not found")
+		}
+
+		_, err := primitive.ObjectIDFromHex(id)
+		if err != nil {
+			return &Person{}, err
+		}
+
+		personMap[id] = person
+		return &person, nil
 	} else {
 		objectId, err := primitive.ObjectIDFromHex(id)
 		if err != nil {
-			return &mongo.UpdateResult{UpsertedID: primitive.NilObjectID, UpsertedCount: 0}, err
+			return &Person{}, err
 		}
 
 		filter := bson.M{"_id": objectId}
 		update := bson.M{"$set": person}
 
-		result, err := peopleCollection.UpdateOne(context.TODO(), filter, update)
+		_, err = peopleCollection.UpdateOne(context.TODO(), filter, update)
 		if err != nil {
-			return &mongo.UpdateResult{UpsertedID: primitive.NilObjectID, UpsertedCount: 0}, err
+			return &Person{}, err
 		}
 
-		return result, nil
+		return GetPersonByObjectId(id)
 	}
 }
 
